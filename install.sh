@@ -63,7 +63,7 @@ install_basic_tools() {
     fi
 
     log "正在检查并安装必要工具..."
-    TOOLS="git build-essential curl wget ufw iproute2 net-tools"
+    TOOLS="git build-essential curl wget ufw"
     for tool in $TOOLS; do
         if ! command -v $tool &> /dev/null; then
             log "正在安装 $tool..."
@@ -106,117 +106,20 @@ install_go() {
     go version
 }
 
-# HE IPv6 隧道配置函数
-configure_he_tunnel() {
-    log "开始配置HE IPv6隧道..."
-
-    # 验证IPv4地址函数
-    validate_ipv4() {
-        if [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-            IFS='.' read -r -a octets <<< "$1"
-            for octet in "${octets[@]}"; do
-                if [[ $octet -gt 255 ]]; then
-                    return 1
-                fi
-            done
-            return 0
-        else
-            return 1
-        fi
-    }
-
-    # 验证IPv6地址函数
-    validate_ipv6() {
-        if [[ $1 =~ ^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}$ ]]; then
-            return 0
-        else
-            return 1
-        fi
-    }
-
-    # 生成本机IPv6地址
-    generate_local_ipv6() {
-        local he_ipv6=$1
-        echo "${he_ipv6%::1}::2"
-    }
-
-    # 获取用户输入
-    while true; do
-        read -p "请输入HE服务器IPv4地址: " he_ipv4
-        validate_ipv4 $he_ipv4 && break
-        error "无效的IPv4地址，请重新输入。"
-    done
-
-    while true; do
-        read -p "请输入本机IPv4地址: " local_ipv4
-        validate_ipv4 $local_ipv4 && break
-        error "无效的IPv4地址，请重新输入。"
-    done
-
-    while true; do
-        read -p "请输入HE服务器IPv6地址（包括前缀长度，例如 2001:470:1f04:17b::1/64）: " he_ipv6
-        if [[ $he_ipv6 =~ ^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}::1/[0-9]+$ ]]; then
-            break
-        fi
-        error "无效的IPv6地址，必须以::1结尾并包含前缀长度，请重新输入。"
-    done
-
-    local_ipv6=$(generate_local_ipv6 "${he_ipv6%/*}")
-    local_ipv6="${local_ipv6}/${he_ipv6#*/}"
-    log "本机IPv6地址已自动设置为: $local_ipv6"
-
-    while true; do
-        read -p "请选择HE分配给您的前缀类型 (1 - /64, 2 - /48): " prefix_choice
-        if [[ "$prefix_choice" == "1" || "$prefix_choice" == "2" ]]; then
-            break
-        fi
-        error "请输入1或2"
-    done
-
-    if [ "$prefix_choice" == "1" ]; then
-        read -p "请输入HE分配的/64前缀 (例如: 2001:470:1f05:17b::/64): " routed_prefix
-        prefix_length="64"
-    else
-        read -p "请输入HE分配的/48前缀 (例如: 2001:470:8099::/48): " routed_prefix
-        prefix_length="48"
-    fi
-
-    routed_prefix=${routed_prefix%/*}
-
-    # 配置隧道
-    log "正在配置HE IPv6隧道..."
-    ip tunnel add he-ipv6 mode sit remote $he_ipv4 local $local_ipv4 ttl 255
-    ip link set he-ipv6 up
-    ip addr add ${local_ipv6} dev he-ipv6
-    ip -6 route add ${routed_prefix}/${prefix_length} dev he-ipv6
-    ip -6 route add ::/0 via ${he_ipv6%/*} dev he-ipv6
-    ip link set he-ipv6 mtu 1480
-
-    # 保存配置到文件
-    mkdir -p /etc/he-ipv6
-    cat << EOF > /etc/he-ipv6/tunnel.conf
-HE_SERVER_IPV4=$he_ipv4
-HE_SERVER_IPV6=${he_ipv6%/*}
-LOCAL_IPV4=$local_ipv4
-LOCAL_IPV6=${local_ipv6%/*}
-ROUTED_PREFIX=$routed_prefix
-PREFIX_LENGTH=$prefix_length
-EOF
-
-    log "HE IPv6隧道配置完成。"
-}
-
 # 项目结构修复
 fix_project_structure() {
     log "修复项目结构..."
     
+    # 创建必要的目录
     mkdir -p internal/{config,dns,proxy,sysutils}
     mkdir -p cmd/ipv6proxy
     
+    # 移动源文件
     if [ -f "main.go" ]; then
         mv main.go cmd/ipv6proxy/
     fi
     
+    # 移动其他Go文件到internal目录
     for file in $(find . -maxdepth 1 -name "*.go" ! -name "main.go"); do
         dir_name=$(basename "$file" .go)
         if [ -d "internal/$dir_name" ]; then
@@ -235,6 +138,7 @@ fix_source_code() {
     
     find . -type f -name "*.go" -exec sed -i 's|"github.com/your-project/|"github.com/qza666/v6/internal/|g' {} +
     
+    # 创建新的main.go如果不存在
     if [ ! -f "cmd/ipv6proxy/main.go" ]; then
         cat > cmd/ipv6proxy/main.go << 'EOF'
 package main
@@ -263,22 +167,28 @@ EOF
 install_project_dependencies() {
     log "安装项目依赖..."
     
+    # 设置Go环境变量
     export GO111MODULE=on
     export GOPROXY=https://goproxy.cn,direct
     export GOPRIVATE=github.com/qza666
     
+    # 清理之前的缓存
     go clean -modcache
     
+    # 重新初始化go.mod
     rm -f go.mod go.sum
     go mod init github.com/qza666/v6
     
+    # 添加必要的依赖
     go get github.com/miekg/dns@latest
     go get github.com/elazarl/goproxy@latest
     
+    # 整理依赖
     if ! go mod tidy; then
         handle_error "依赖安装失败，请检查代码结构和权限"
     fi
     
+    # 验证依赖
     if ! go mod verify; then
         handle_error "依赖验证失败"
     fi
@@ -290,6 +200,7 @@ install_project_dependencies() {
 configure_system() {
     log "配置系统环境..."
     
+    # 系统参数
     SYSCTL_PARAMS=(
         "net.ipv6.conf.all.forwarding=1"
         "net.ipv6.conf.default.forwarding=1"
@@ -301,6 +212,7 @@ configure_system() {
         "net.ipv6.tcp_max_syn_backlog=1024"
     )
     
+    # 备份并更新sysctl配置
     cp /etc/sysctl.conf /etc/sysctl.conf.bak
     for param in "${SYSCTL_PARAMS[@]}"; do
         if ! grep -q "^${param}$" /etc/sysctl.conf; then
@@ -326,16 +238,13 @@ configure_firewall() {
 create_service() {
     log "创建系统服务..."
     
-    # 提示用户输入IPv6 CIDR
-    read -p "请输入您的IPv6 CIDR（例如：2001:db8::/48）: " ipv6_cidr
-    
     cat > /etc/systemd/system/ipv6proxy.service << EOF
 [Unit]
 Description=IPv6 Proxy Service
 After=network.target
 
 [Service]
-ExecStart=/usr/local/go/bin/go run /root/v6/cmd/ipv6proxy/main.go -cidr "$ipv6_cidr" -port 33300
+ExecStart=/usr/local/go/bin/go run /root/v6/cmd/ipv6proxy/main.go -cidr "YOUR_IPV6_CIDR" -port 33300
 Restart=always
 User=root
 WorkingDirectory=/root/v6
@@ -350,19 +259,21 @@ EOF
 
 # 主函数
 main() {
-    log "开始安装IPv6 Proxy..."
+    log "开始安装 IPv6 Proxy..."
     
+    # 检查root权限
     check_root
+    
+    # 安装基础工具
     install_basic_tools
     
+    # 安装Go
     if ! check_go_version; then
         install_go
     fi
     
-    configure_he_tunnel
-    
+    # 克隆项目
     log "检查项目代码..."
-    
     if [ -d "v6" ]; then
         cd v6
         git pull
@@ -371,31 +282,32 @@ main() {
         cd v6
     fi
     
+    # 修复项目结构和源码
     fix_project_structure
     fix_source_code
     
+    # 安装依赖
     install_project_dependencies
     
+    # 系统配置
     configure_system
     configure_firewall
     create_service
     
+    # 显示完成信息
     log "安装完成！使用说明："
     cat << EOF
 
 使用说明:
-1. IPv6 Proxy服务已配置为系统服务。
-2. 您可以使用以下命令来管理服务：
-   - 启动服务：systemctl start ipv6proxy
-   - 停止服务：systemctl stop ipv6proxy
-   - 重启服务：systemctl restart ipv6proxy
-   - 查看服务状态：systemctl status ipv6proxy
-3. 服务配置文件位于：/etc/systemd/system/ipv6proxy.service
-4. 如需修改配置，请编辑该文件并重新加载systemd：
+1. 编辑服务配置: nano /etc/systemd/system/ipv6proxy.service
+2. 替换 YOUR_IPV6_CIDR 为实际的IPv6 CIDR
+3. 执行以下命令：
    systemctl daemon-reload
+   systemctl start ipv6proxy
+   systemctl enable ipv6proxy
 
 可用参数:
--cidr: IPv6 CIDR范围（已在服务配置中设置）
+-cidr: IPv6 CIDR范围（必需）
 -port: 服务端口（默认：33300）
 -bind: 绑定地址（默认：0.0.0.0）
 -username: 认证用户名
@@ -408,17 +320,16 @@ main() {
 
 EOF
 
-    log "是否要现在启动IPv6 Proxy服务？(y/n)"
-    read start_service
-    if [[ $start_service =~ ^[Yy]$ ]]; then
-        systemctl start ipv6proxy
-        systemctl enable ipv6proxy
-        log "IPv6 Proxy服务已启动并设置为开机自启"
+    # 询问是否重启
+    read -p "是否现在重启系统来应用所有更改？(y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        log "系统将在5秒后重启..."
+        sleep 5
+        reboot
     else
-        log "您可以稍后使用 'systemctl start ipv6proxy' 命令启动服务"
+        warn "请记得稍后手动重启系统以确保所有更改生效。"
     fi
-
-    log "安装和配置已完成。如有问题，请查看系统日志或联系支持。"
 }
 
 # 执行主函数
