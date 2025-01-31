@@ -1,3 +1,6 @@
+![image](https://github.com/user-attachments/assets/dc93ec42-2ed9-4bab-ad75-789488f4cc43)
+
+
 # HE IPv6 隧道与 IPv6 代理配置脚本
 
 这个脚本用于配置 HE（Hurricane Electric）IPv6 隧道以及一个基于 Go 语言的 IPv6 代理服务。它包括从安装必备工具、配置 IPv6 隧道到创建并启用 IPv6 代理服务的完整步骤。
