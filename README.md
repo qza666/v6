@@ -1,10 +1,9 @@
 ![image](https://github.com/user-attachments/assets/6c9ca3d0-27ff-44fd-bd04-e8aad02bc8f0)
+# ipv6完全屏蔽ipv4的检测，每次请求都是随机的ipv6，如需ipv4代理，请使用101端口。完全傻瓜式的一键安装
 
-
-# HE IPv6 隧道与 IPv6 代理配置脚本（ipv6完全屏蔽ipv4的检测，每次请求都是随机的ipv6，如需ipv4代理，请使用101端口）
+# HE IPv6 隧道与 IPv6 代理配置脚本
 
 这个脚本用于配置 HE（Hurricane Electric）IPv6 隧道以及一个基于 Go 语言的 IPv6 代理服务。它包括从安装必备工具、配置 IPv6 隧道到创建并启用 IPv6 代理服务的完整步骤。
-完全傻瓜式的一键安装，
 
 ## 功能
 
