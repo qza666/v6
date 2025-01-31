@@ -1,6 +1,7 @@
 # HE IPv6 隧道与 IPv6 代理配置脚本
 
 这个脚本用于配置 HE（Hurricane Electric）IPv6 隧道以及一个基于 Go 语言的 IPv6 代理服务。它包括从安装必备工具、配置 IPv6 隧道到创建并启用 IPv6 代理服务的完整步骤。
+完全傻瓜式的一键安装
 
 ## 功能
 
@@ -10,7 +11,7 @@
 
 ## 系统要求
 
-- **操作系统**：基于 Debian/Ubuntu 的 Linux 系统
+- **操作系统**：基于 Debian/Ubuntu 的 Linux 系统（推荐Ubuntu 18）
 - **系统内存**：至少 512 MB 可用内存
 - **root 权限**：需要以 root 用户运行
 
@@ -32,7 +33,7 @@ sudo ./install.sh
 - **HE 服务器的 IPv4 地址**
 - **本地机器的 IPv4 地址**
 - **HE 服务器的 IPv6 地址（包括前缀长度）**
-- **HE 分配的 IPv6 前缀**
+- **HE 分配的 IPv6 前缀（可以是/48）**
 
 ### 3. 启动 IPv6 代理服务
 
