@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/dc93ec42-2ed9-4bab-ad75-789488f4cc43)
+![image](https://github.com/user-attachments/assets/6c9ca3d0-27ff-44fd-bd04-e8aad02bc8f0)
 
 
 # HE IPv6 隧道与 IPv6 代理配置脚本（ipv6完全屏蔽ipv4的检测，每次请求都是随机的ipv6，如需ipv4代理，请使用101端口）
