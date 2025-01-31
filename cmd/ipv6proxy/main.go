@@ -15,7 +15,11 @@ func main() {
 	log.SetOutput(os.Stdout)
 	cfg := config.ParseFlags()
 	if cfg.CIDR == "" {
-		log.Fatal("cidr is required")
+		log.Fatal("CIDR is required")
+	}
+
+	if cfg.RealIPv4 == "" {
+		log.Fatal("Real IPv4 address is required")
 	}
 
 	if cfg.AutoForwarding {
@@ -30,13 +34,20 @@ func main() {
 		sysutils.SetIpNonLocalBind()
 	}
 
-	p := proxy.NewProxyServer(cfg)
+	randomIPv6Proxy := proxy.NewProxyServer(cfg, true)
+	realIPv4Proxy := proxy.NewProxyServer(cfg, false)
 
-	log.Printf("Starting server on %s:%d", cfg.Bind, cfg.Port)
-	err := http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.Bind, cfg.Port), p)
+	go func() {
+		log.Printf("Starting random IPv6 proxy server on %s:%d", cfg.Bind, cfg.RandomIPv6Port)
+		err := http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.Bind, cfg.RandomIPv6Port), randomIPv6Proxy)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
 
+	log.Printf("Starting real IPv4 proxy server on %s:%d", cfg.Bind, cfg.RealIPv4Port)
+	err := http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.Bind, cfg.RealIPv4Port), realIPv4Proxy)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
-
