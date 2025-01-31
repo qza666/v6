@@ -52,7 +52,7 @@ func getIPv6Address(domain string) (string, error) {
 	return "", fmt.Errorf("no IPv6 address found for %s", domain)
 }
 
-func NewProxyServer(cfg *config.Config) *goproxy.ProxyHttpServer {
+func NewProxyServer(cfg *config.Config, useRandomIPv6 bool) *goproxy.ProxyHttpServer {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = cfg.Verbose
 
@@ -74,20 +74,31 @@ func NewProxyServer(cfg *config.Config) *goproxy.ProxyHttpServer {
 			}
 
 			host := req.URL.Hostname()
-			targetIP, err := getIPv6Address(host)
-			if err != nil {
-				log.Printf("Get IPv6 address error: %v", err)
-				client.Write([]byte(fmt.Sprintf("%s 500 Internal Server Error\r\n\r\n", req.Proto)))
-				client.Close()
-				return
-			}
+			var outgoingIP net.IP
+			var targetIP string
+			var err error
 
-			outgoingIP, err := generateRandomIPv6(cfg.CIDR)
-			if err != nil {
-				log.Printf("Generate random IPv6 error: %v", err)
-				client.Write([]byte(fmt.Sprintf("%s 500 Internal Server Error\r\n\r\n", req.Proto)))
-				client.Close()
-				return
+			if useRandomIPv6 {
+				targetIP, err = getIPv6Address(host)
+				if err != nil {
+					log.Printf("Get IPv6 address error: %v", err)
+					client.Write([]byte(fmt.Sprintf("%s 500 Internal Server Error\r\n\r\n", req.Proto)))
+					client.Close()
+					return
+				}
+
+				outgoingIP, err = generateRandomIPv6(cfg.CIDR)
+				if err != nil {
+					log.Printf("Generate random IPv6 error: %v", err)
+					client.Write([]byte(fmt.Sprintf("%s 500 Internal Server Error\r\n\r\n", req.Proto)))
+					client.Close()
+					return
+				}
+
+				log.Printf("CONNECT: %s [%s] from %s", req.URL.Host, targetIP, outgoingIP.String())
+			} else {
+				outgoingIP = net.ParseIP(cfg.RealIPv4)
+				log.Printf("CONNECT: %s from real IPv4 %s", req.URL.Host, outgoingIP.String())
 			}
 
 			dialer := &net.Dialer{
@@ -103,7 +114,6 @@ func NewProxyServer(cfg *config.Config) *goproxy.ProxyHttpServer {
 				return
 			}
 
-			log.Printf("CONNECT: %s [%s] from %s", req.URL.Host, targetIP, outgoingIP.String())
 			client.Write([]byte(fmt.Sprintf("%s 200 Connection established\r\n\r\n", req.Proto)))
 
 			go copyData(client, server)
@@ -114,19 +124,28 @@ func NewProxyServer(cfg *config.Config) *goproxy.ProxyHttpServer {
 	proxy.OnRequest().DoFunc(
 		func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 			host := req.URL.Hostname()
-			targetIP, err := getIPv6Address(host)
-			if err != nil {
-				log.Printf("Get IPv6 address error: %v", err)
-				return req, goproxy.NewResponse(req, goproxy.ContentTypeText, http.StatusBadGateway, "Failed to resolve host")
-			}
+			var outgoingIP net.IP
+			var targetIP string
+			var err error
 
-			outgoingIP, err := generateRandomIPv6(cfg.CIDR)
-			if err != nil {
-				log.Printf("Generate random IPv6 error: %v", err)
-				return req, goproxy.NewResponse(req, goproxy.ContentTypeText, http.StatusInternalServerError, "Failed to generate IPv6 address")
-			}
+			if useRandomIPv6 {
+				targetIP, err = getIPv6Address(host)
+				if err != nil {
+					log.Printf("Get IPv6 address error: %v", err)
+					return req, goproxy.NewResponse(req, goproxy.ContentTypeText, http.StatusBadGateway, "Failed to resolve host")
+				}
 
-			log.Printf("HTTP: %s [%s] from %s", req.URL.Host, targetIP, outgoingIP.String())
+				outgoingIP, err = generateRandomIPv6(cfg.CIDR)
+				if err != nil {
+					log.Printf("Generate random IPv6 error: %v", err)
+					return req, goproxy.NewResponse(req, goproxy.ContentTypeText, http.StatusInternalServerError, "Failed to generate IPv6 address")
+				}
+
+				log.Printf("HTTP: %s [%s] from %s", req.URL.Host, targetIP, outgoingIP.String())
+			} else {
+				outgoingIP = net.ParseIP(cfg.RealIPv4)
+				log.Printf("HTTP: %s from real IPv4 %s", req.URL.Host, outgoingIP.String())
+			}
 
 			dialer := &net.Dialer{
 				LocalAddr: &net.TCPAddr{IP: outgoingIP, Port: 0},
@@ -134,7 +153,7 @@ func NewProxyServer(cfg *config.Config) *goproxy.ProxyHttpServer {
 			}
 
 			transport := &http.Transport{
-				Dial: dialer.Dial,
+				Dial:        dialer.Dial,
 				DialContext: dialer.DialContext,
 			}
 
@@ -182,4 +201,3 @@ func copyData(dst, src net.Conn) {
 	defer src.Close()
 	io.Copy(dst, src)
 }
-
